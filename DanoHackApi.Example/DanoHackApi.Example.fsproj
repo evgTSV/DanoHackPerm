@@ -5,7 +5,25 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <Compile Include="Utils.fs" />
+        <Compile Include="Models.fs" />
+        <Compile Include="ModelsUtils.fs" />
+        <Compile Include="DatasetProvider.fs" />
+        <Compile Include="ML.fs" />
         <Compile Include="Program.fs"/>
+        <Content Include="data.csv" />
+        <Content Include="tennis-data.xlsx" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Deedle" Version="3.0.0" />
+      <PackageReference Include="Deedle.Excel" Version="3.0.0" />
+      <PackageReference Include="FSharp.Data" Version="6.6.0" />
+      <PackageReference Include="Giraffe" Version="7.0.2" />
+      <PackageReference Include="Microsoft.Data.Analysis" Version="0.22.2" />
+      <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.9" />
+      <PackageReference Include="Microsoft.ML" Version="4.0.2" />
+      <PackageReference Include="Microsoft.ML.LightGbm" Version="4.0.2" />
+      <PackageReference Include="Microsoft.ML.OnnxTransformer" Version="4.0.2" />
+    </ItemGroup>
 </Project>
