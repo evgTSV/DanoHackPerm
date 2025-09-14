@@ -12,6 +12,7 @@
       <Compile Include="ML.fs" />
       <Compile Include="GenerationDiff.fs" />
       <Compile Include="GenderDiff.fs" />
+      <Compile Include="MLVisualize.fs" />
       <Compile Include="main.fs" />
     </ItemGroup>
 

@@ -1,7 +1,9 @@
 import pandas as pd
+import statsmodels.api as sm
 from scipy.stats import chi2_contingency, ttest_ind
+from sklearn.linear_model import LogisticRegression
 
-df = pd.read_csv("/DanoHackAnalysis/data.csv")
+df = pd.read_csv("./DanoHackAnalysis/data.csv")
 df['age_group'] = df['client_age'].apply(lambda x: 'youth' if x <= 35 else 'adult')
 df_filtered = df[df['client_agree_flg'].isin([1, -1])].copy()
 df_filtered['agree_binary'] = (df_filtered['client_agree_flg'] == 1).astype(int)
@@ -55,3 +57,25 @@ if p_chi2 < 0.05 and p_ttest < 0.05:
 
 else:
     print("\nГипотеза по возрасту не подтверждается: статистических различий нет, проверка по полу не проводится.")
+    
+# Логистическая регрессия для проверки влияния всех факторов одновременно
+print("\nЛогистическая регрессия для проверки влияния всех факторов одновременно:")
+
+X = pd.get_dummies(df_filtered[['age_group', 'client_gender', 'employee_gender']], drop_first=True)
+X = X.astype(float)
+X = sm.add_constant(X)
+
+y = df_filtered['agree_binary'].astype(float)
+
+model = sm.Logit(y, X)
+result = model.fit()
+print(result.summary())
+
+# Проверка взаимодействия возраста и пола клиента
+print("\nПроверка взаимодействия возраста и пола клиента:")
+cross_table = pd.crosstab(
+    index=[df_filtered['age_group'], df_filtered['client_gender']],
+    columns=df_filtered['agree_binary'],
+    normalize='index'
+)
+print(cross_table)

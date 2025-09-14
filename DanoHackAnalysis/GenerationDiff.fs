@@ -11,7 +11,7 @@ open Data
 // Определяем поколения по возрасту клиента
 let getGeneration age =
     match age with
-    | age when age <= 35M -> "Молодёж"
+    | age when age <= 35M -> "Молодёжь"
     | _ -> "Старше 35"
 
 // Добавляем информацию о поколении клиента к данным
@@ -33,6 +33,7 @@ type SalesSusceptibilityStats = {
     AvgOfferTime: decimal
     AgreementRate: float
     PositiveAgreementRate: float
+    ZeroAgreementRate: float
     OfferTypeDistribution: Map<string, float>
 }
 
@@ -54,6 +55,11 @@ let calculateSalesStats (generation: string) (rows: seq<Provider.Row>) =
         | Some rows -> rows.Length
         | None -> 0
         
+    let zeroAgreementCount = 
+        match agreementStats.TryFind 0 with
+        | Some rows -> rows.Length
+        | None -> 0
+        
     let totalAgreementResponses = 
         rowsList 
         |> List.sumBy (fun r -> if r.Client_agree_flg <> 0 then 1 else 0)
@@ -65,15 +71,15 @@ let calculateSalesStats (generation: string) (rows: seq<Provider.Row>) =
             (offerType, float rows.Length / float count * 100.0))
         |> Map.ofList
     
-    let avgOfferTime = 
-        rowsList 
-        |> List.averageBy (fun r -> 
-            r.Offer_time_sec)
+    let avgOfferTime =
+        rowsList
+        |> List.choose (fun r -> if r.Offer_time_sec > 0M then Some r.Offer_time_sec else None)
+        |> fun l -> if l.Length > 0 then List.average l else 0M
     
     {
         Generation = generation
         Count = count
-        UtilizationRate = float utilizationCount / float count * 2000.0
+        UtilizationRate = float utilizationCount / float count * 3000.0
         ApplicationRate = float applicationCount / float count * 2000.0
         VoiceOfferRate = float voiceOfferCount / float count * 100.0
         AvgOfferTime = avgOfferTime
@@ -82,6 +88,7 @@ let calculateSalesStats (generation: string) (rows: seq<Provider.Row>) =
                 float positiveAgreementCount / float totalAgreementResponses * 100.0 
             else 0.0
         PositiveAgreementRate = float positiveAgreementCount / float count * 500.0
+        ZeroAgreementRate = float zeroAgreementCount / float count * 500.0
         OfferTypeDistribution = offerTypeDistribution
     }
 
@@ -93,7 +100,7 @@ let generationStats =
         calculateSalesStats gen rowData)
     |> Seq.sortBy (fun x -> 
         match x.Generation with
-        | "Молодёж" -> 1
+        | "Молодёжь" -> 1
         | _ -> 2)
     |> Seq.toList
 
@@ -105,12 +112,14 @@ let susceptibilityChart =
     let applicationRates = generationStats |> List.map (fun x -> x.ApplicationRate)
     let agreementRates = generationStats |> List.map (fun x -> x.AgreementRate)
     let positiveAgreementRates = generationStats |> List.map (fun x -> x.PositiveAgreementRate)
+    let zeroAgreementRates = generationStats |> List.map (fun x -> x.ZeroAgreementRate)
     
     [
         Chart.Column(utilizationRates, generations, Name = "Утилизация (%)")
         Chart.Column(applicationRates, generations, Name = "Заявки (%)")
         Chart.Column(agreementRates, generations, Name = "Согласие (%)")
         Chart.Column(positiveAgreementRates, generations, Name = "Положительное согласие (%)")
+        Chart.Column(zeroAgreementRates, generations, Name = "Согласие не указано (%)")
     ]
     |> Chart.combine
     |> Chart.withTitle "Восприимчивость к предложениям по поколениям клиентов"
@@ -120,7 +129,7 @@ let susceptibilityChart =
 // 2. График времени на убеждение по поколениям
 let persuasionTimeChart =
     let generations = generationStats |> List.map (fun x -> x.Generation)
-    let avgOfferTimes = generationStats |> List.map (fun x -> x.AvgOfferTime / 60M) // в минутах
+    let avgOfferTimes = generationStats |> List.map (fun x -> x.AvgOfferTime)
     
     Chart.Column(
         avgOfferTimes,
@@ -129,7 +138,7 @@ let persuasionTimeChart =
     )
     |> Chart.withTitle "Среднее время убеждения по поколениям"
     |> Chart.withXAxisStyle "Поколение клиента"
-    |> Chart.withYAxisStyle "Время (минуты)"
+    |> Chart.withYAxisStyle "Время (секунды)"
 
 // 3. Анализ эффективности по типам офферов для каждого поколения
 let offerTypeAnalysis =
@@ -206,7 +215,7 @@ let voiceOfferEffectivenessChart =
             (gen, count, float utilizationCount / float count * 100.0, float applicationCount / float count * 100.0))
         |> Seq.sortBy (fun (gen, _, _, _) -> 
             match gen with
-            | "Молодёж" -> 1
+            | "Молодёжь" -> 1
             | _ -> 2)
         |> Seq.toList
     
@@ -225,41 +234,34 @@ let voiceOfferEffectivenessChart =
 
 // 5. Анализ корреляции между временем убеждения и успехом
 let persuasionTimeCorrelationChart =
-    let dataByGeneration =
-        dataWithClientGeneration
-        |> List.groupBy fst
-        |> List.sortBy (fun (gen, _) -> 
-            match gen with
-            | "Молодёж" -> 1
-            | _ -> 2)
-    
-    let charts =
-        dataByGeneration
-        |> List.map (fun (gen, rows) ->
-            let rowData = rows |> List.map snd
-            let successData =
-                rowData
-                |> List.map (fun r -> 
-                    float r.Offer_time_sec / 60.0, if r.Utilization_flag then 1.0 else 0.0)
-            
-            let x = successData |> List.map fst
-            let y = successData |> List.map snd
-            
-            Chart.Scatter(
-                X = x, Y = y, 
-                Mode = StyleParam.Mode.Markers,
-                Name = gen,
-                Marker = Marker.init(Size = 10, Opacity = 0.5)
-            )
-        )
-    
-    charts
+    dataWithClientGeneration
+    |> List.groupBy fst
+    |> List.map (fun (gen, rows) ->
+        let success = 
+            rows 
+            |> List.map snd
+            |> List.choose (fun r -> 
+                if r.Utilization_flag then Some (float r.Offer_time_sec) else None)
+        let fail = 
+            rows 
+            |> List.map snd
+            |> List.choose (fun r -> 
+                if not r.Utilization_flag then Some (float r.Offer_time_sec) else None)
+        [
+            Chart.BoxPlot(success, Name = $"{gen} — Успех")
+            Chart.BoxPlot(fail, Name = $"{gen} — Нет")
+        ]
+        |> Chart.combine
+    )
     |> Chart.combine
-    |> Chart.withTitle "Корреляция времени убеждения и успеха утилизации по поколениям"
-    |> Chart.withXAxisStyle "Время убеждения (минуты)"
-    |> Chart.withYAxisStyle "Утилизация (0 - нет, 1 - да)"
+    |> Chart.withTitle "Время убеждения: успешная vs. неуспешная утилизация"
+    |> Chart.withYAxisStyle "Время (секунды)"
+    |> Chart.withLegendStyle (
+        Orientation = StyleParam.Orientation.Horizontal,
+        X = 0.5,
+        XAnchor = StyleParam.XAnchorPosition.Center    
+    )
 
-// Создаем dashboard со всеми графиками
 let salesDashboard =
     [
         susceptibilityChart
@@ -268,8 +270,7 @@ let salesDashboard =
         voiceOfferEffectivenessChart
         persuasionTimeCorrelationChart
     ]
-    |> Chart.Grid(3, 2)
-    |> Chart.withSize(1600, 1200)
 
 let show _ =
-    salesDashboard |> Chart.show
+    salesDashboard
+    |> List.iter Chart.show
